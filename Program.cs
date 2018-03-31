@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -15,11 +16,34 @@ namespace FileRenamer
 	{
 		static void Main(string[] args)
 		{
-			string postfix = "Justyna";
+			FileRenamerModule();
+			//ImageTakenSetterModule();
+		}
+		static void ImageTakenSetterModule()
+		{
+			string folderIn = @"Z:\Zdjecia\2015-08 Azjatycka przygoda\Wybrane zdjecia\2015-09-03 Szanghaj";
 
-			string folderIn = @"Z:\Zdjecia\2016-05 Rumunia czyli zwiedzanie z Drakula\Justyna";
-			int hourOffset = 1;
-			int monthOffset = -1;
+			var files = Directory.GetFiles(folderIn, "*.jpg", SearchOption.AllDirectories);
+			foreach (var file in files)
+			{
+				FileInfo fi = new FileInfo(file);
+
+				var dateTakenStr = fi.Name.Substring(0, 18);
+				DateTime dateTaken;
+				if (DateTime.TryParseExact(dateTakenStr, "yyyy-MM-dd HHmm.ss", null, System.Globalization.DateTimeStyles.None, out dateTaken))
+				{
+					SetDateTaken(file, dateTaken);
+				}
+			}
+		}
+
+		static void FileRenamerModule()
+		{
+			string postfix = "GoPro";
+
+			string folderIn = @"Z:\Zdjecia\2015-08 Azjatycka przygoda\Wybrane zdjecia\test";
+			double hourOffset = -2.5;
+			int monthOffset = 0;
 
 			var files = Directory.GetFiles(folderIn, "*.jpg", SearchOption.AllDirectories);
 
@@ -64,14 +88,41 @@ namespace FileRenamer
 		/// <returns></returns>
 		public static DateTime GetDateTakenFromImage(string path)
 		{
-			using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
-			using (Image myImage = Image.FromStream(fs, false, false))
+			using (Image theImage = new Bitmap(path))
 			{
-				PropertyItem propItem = myImage.GetPropertyItem(36867);
-				string dateTaken = r.Replace(Encoding.UTF8.GetString(propItem.Value), "-", 2);
-				return DateTime.Parse(dateTaken);
+				PropertyItem[] propItems = theImage.PropertyItems;
+				Encoding _Encoding = Encoding.UTF8;
+				var DataTakenProperty1 = propItems.Where(a => a.Id.ToString("x") == "9004").FirstOrDefault();
+				var DataTakenProperty2 = propItems.Where(a => a.Id.ToString("x") == "9003").FirstOrDefault();
+				string originalDateString = _Encoding.GetString(DataTakenProperty1.Value);
+				originalDateString = originalDateString.Remove(originalDateString.Length - 1);
+				DateTime originalDate = DateTime.ParseExact(originalDateString, "yyyy:MM:dd HH:mm:ss", null);
+				return originalDate;
 			}
 		}
+		static void SetDateTaken(string path, DateTime dateTaken)
+		{
+			string new_path = System.IO.Path.GetDirectoryName(path) + "\\_" + System.IO.Path.GetFileName(path);
+			using (Image image = new Bitmap(path))
+			{
+				PropertyItem[] propItems = image.PropertyItems;
+				Encoding _Encoding = Encoding.UTF8;
+				var DataTakenProperty1 = propItems.Where(a => a.Id.ToString("x") == "9004").FirstOrDefault();
+				var DataTakenProperty2 = propItems.Where(a => a.Id.ToString("x") == "9003").FirstOrDefault();
+				string originalDateString = _Encoding.GetString(DataTakenProperty1.Value);
+				originalDateString = originalDateString.Remove(originalDateString.Length - 1);
+				DateTime originalDate = DateTime.ParseExact(originalDateString, "yyyy:MM:dd HH:mm:ss", null);
 
+				originalDate = dateTaken;
+
+				DataTakenProperty1.Value = _Encoding.GetBytes(originalDate.ToString("yyyy:MM:dd HH:mm:ss") + '\0');
+				DataTakenProperty2.Value = _Encoding.GetBytes(originalDate.ToString("yyyy:MM:dd HH:mm:ss") + '\0');
+				image.SetPropertyItem(DataTakenProperty1);
+				image.SetPropertyItem(DataTakenProperty2);
+				image.Save(new_path);
+			}
+			File.Delete(path);
+			File.Move(new_path, path);
+		}
 	}
 }
